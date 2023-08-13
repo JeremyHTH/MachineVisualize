@@ -7,8 +7,10 @@ from Componment import MovingComponent
 import subprocess
 import platform
 
-WINDOW_WIDTH = 400
-WINDOW_HEIGHT = 300
+MID_WINDOW_WIDTH = 400
+MID_WINDOW_HEIGHT = 300
+LOW_WINDOW_WIDTH = 400
+LOW_WINDOW_HEIGHT = 300
 
 class CenterWidget(QWidget):
     def __init__(self):
@@ -21,21 +23,32 @@ class CenterWidget(QWidget):
     def init_UI(self):
         self.layout = QGridLayout(self)
 
-        self.MidLayerDisplay = QLabel()
-        canvas = QPixmap(WINDOW_WIDTH,WINDOW_HEIGHT)
-        canvas.fill(Qt.black)
+
+
+        self.MidLayerDisplay = QLabel(self)
+        canvas = QPixmap(MID_WINDOW_WIDTH, MID_WINDOW_HEIGHT)
         self.MidLayerDisplay.setPixmap(canvas)
         self.layout.addWidget(self.MidLayerDisplay, 0, 0, 1, 1)
 
         self.DrawMidLayComponent()
 
+        self.LowLayerDisplay = QLabel(self)
+        
+        
         self.setLayout(self.layout)
     
     def DrawMidLayComponent(self):
+        self.MidLayerDisplay.pixmap().fill(Qt.black)
         painter = QPainter(self.MidLayerDisplay.pixmap())
         pen = QPen()
-        pen.setWidth(3)
-        pen.setColor(QColor("#0a0838"))
+        pen.setWidth(10)
+        pen.setColor(QColor("#0c5206"))
+        painter.setPen(pen)
+
+        painter.drawRect(0, 0, MID_WINDOW_WIDTH, MID_WINDOW_HEIGHT)
+
+        pen.setWidth(1)
+        pen.setColor(QColor("#420803"))
         painter.setPen(pen)
 
         brush = QBrush()
