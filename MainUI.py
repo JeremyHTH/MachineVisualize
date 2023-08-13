@@ -41,7 +41,7 @@ class CenterWidget(QWidget):
         self.MidLayerDisplay.pixmap().fill(Qt.black)
         painter = QPainter(self.MidLayerDisplay.pixmap())
         pen = QPen()
-        pen.setWidth(10)
+        pen.setWidth(8)
         pen.setColor(QColor("#0c5206"))
         painter.setPen(pen)
 
