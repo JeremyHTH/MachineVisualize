@@ -6,14 +6,14 @@ from PyQt5.QtCore import Qt, QRect
 from Componment import MovingComponent, Coordinate
 import subprocess
 import platform
-import csv
+import csv, yaml
 
 SIDE_WINDOW_WIDTH = 600
-SIDE_WINDOW_HEIGHT = 900
+SIDE_WINDOW_HEIGHT = 800
 MID_WINDOW_WIDTH = 600
-MID_WINDOW_HEIGHT = 450
+MID_WINDOW_HEIGHT = 400
 LOW_WINDOW_WIDTH = 600
-LOW_WINDOW_HEIGHT = 450
+LOW_WINDOW_HEIGHT = 400
 VIEW_SETTING = {'Side': ("Head", "Eye", "MegaEye", "LeftLeg", "RightLeg"), 'Mid': ("Eye", "MegaEye", "Arm"), 'Bottom': ("LeftLeg", "RightLeg")}
 
 
@@ -21,7 +21,7 @@ class CenterWidget(QWidget):
     def __init__(self):
         super().__init__()
 
-        self.ComponentList = {}
+        self.ComponentList : dict[str, MovingComponent]= {}
         self.CreateComponent()
         self.ComponentDrawer = {'Pen': QPen(),'Brush': QBrush()}
         self.ComponentDrawer['Pen'].setWidth(1)
@@ -39,57 +39,79 @@ class CenterWidget(QWidget):
         
     def CreateComponent(self):
         self.ComponentList : dict[str, MovingComponent] = {}
-        with open("Configure/ComponentConfig.csv", 'r') as CSVFile:
-            CSVRows = csv.reader(CSVFile)
-            for Line in CSVRows:
-                if (len(Line) >= 2 and Line[1] == '1'):
-                    self.ComponentList[Line[0]] = MovingComponent(Name = Line[0])
-                    if (len(Line) == 5):
-                        self.ComponentList[Line[0]].Dimension.x = eval(Line[2])
-                        self.ComponentList[Line[0]].Dimension.y = eval(Line[3])
-                        self.ComponentList[Line[0]].Dimension.z = eval(Line[4])
+        # with open("Configure/ComponentConfig.csv", 'r') as CSVFile:
+        #     CSVRows = csv.reader(CSVFile)
+        #     for Line in CSVRows:
+        #         if (len(Line) >= 2 and Line[1] == '1'):
+        #             self.ComponentList[Line[0]] = MovingComponent(Name = Line[0])
+        #             if (len(Line) >= 5):
+        #                 self.ComponentList[Line[0]].Dimension.x = eval(Line[2])
+        #                 self.ComponentList[Line[0]].Dimension.y = eval(Line[3])
+        #                 self.ComponentList[Line[0]].Dimension.z = eval(Line[4])
         
-        # print(self.ComponentList)
+        # if ('Eye' in self.ComponentList):
+        #     self.ComponentList['Eye'].CurrPos = Coordinate(200, 200, 450)
+        # if ('MegaEye' in self.ComponentList):    
+        #     self.ComponentList['MegaEye'].CurrPos = Coordinate(100, 100, 450)
+        # if ('Head' in self.ComponentList):    
+        #     self.ComponentList['Head'].CurrPos = Coordinate(250, 100, 0)
+        # if ('LeftLeg' in self.ComponentList):    
+        #     self.ComponentList['LeftLeg'].CurrPos = Coordinate(100, 100, 700)
+        # if ('RightLeg' in self.ComponentList):    
+        #     self.ComponentList['RightLeg'].CurrPos = Coordinate(500, 100, 700)
+
+        with open("Configure/ComponentConfig.yml",'r') as f:
+            Data = yaml.safe_load(f)
+
+            for key, Detail in Data.items():
+                print(key, Detail)
+                self.ComponentList[key] = MovingComponent(Name = key, **Detail)
+        print(self.ComponentList)
     def init_UI(self):
         self.layout = QGridLayout(self)
 
         self.SideLayerDisplay = QLabel(self)
-        canvas = QPixmap(SIDE_WINDOW_WIDTH, SIDE_WINDOW_HEIGHT)
-        self.SideLayerDisplay.setPixmap(canvas)
+        self.SideCanvas = QPixmap(SIDE_WINDOW_WIDTH, SIDE_WINDOW_HEIGHT)
+        self.SideLayerDisplay.setPixmap(self.SideCanvas)
         self.layout.addWidget(self.SideLayerDisplay, 0, 0, 2, 1)
 
         self.MidLayerDisplay = QLabel(self)
-        canvas = QPixmap(MID_WINDOW_WIDTH, MID_WINDOW_HEIGHT)
-        self.MidLayerDisplay.setPixmap(canvas)
+        self.MidCanvas = QPixmap(MID_WINDOW_WIDTH, MID_WINDOW_HEIGHT)
+        self.MidLayerDisplay.setPixmap(self.MidCanvas)
         self.layout.addWidget(self.MidLayerDisplay, 0, 1, 1, 1)
 
         self.BottomLayerDisplay = QLabel(self)
-        canvas = QPixmap(LOW_WINDOW_WIDTH, LOW_WINDOW_HEIGHT)
-        self.BottomLayerDisplay.setPixmap(canvas)
+        self.BottomCanvas = QPixmap(LOW_WINDOW_WIDTH, LOW_WINDOW_HEIGHT)
+        self.BottomLayerDisplay.setPixmap(self.BottomCanvas)
         self.layout.addWidget(self.BottomLayerDisplay, 1, 1, 1, 1)
 
-        if ('Eye' in self.ComponentList):
-            self.ComponentList['Eye'].CurrPos = Coordinate(200, 200, 450)
-        if ('MegaEye' in self.ComponentList):    
-            self.ComponentList['MegaEye'].CurrPos = Coordinate(100, 100, 450)
-        if ('Head' in self.ComponentList):    
-            self.ComponentList['Head'].CurrPos = Coordinate(250, 100, 0)
-        if ('LeftLeg' in self.ComponentList):    
-            self.ComponentList['LeftLeg'].CurrPos = Coordinate(100, 100, 700)
-        if ('RightLeg' in self.ComponentList):    
-            self.ComponentList['RightLeg'].CurrPos = Coordinate(500, 100, 700)
+        self.TestMoveButton = QPushButton("Left", self)
+        self.TestMoveButton.clicked.connect(self.TestMove)
+        self.layout.addWidget(self.TestMoveButton)
         
         self.DrawSideLayerComponent()
         self.DrawMidLayComponent()
         self.DrawBottomLayComponent()
 
         
-        self.setLayout(self.layout)
-    
+        # self.setLayout(self.layout)
+    def TestMove(self):
+
+        for key in self.ComponentList.keys():
+            self.ComponentList[key].CurrPos.x += 100
+            self.ComponentList[key].CurrPos.y += 100
+            self.ComponentList[key].CurrPos.z += 100
+            print("Test", self.ComponentList[key].Name)
+        self.DrawSideLayerComponent()
+        self.DrawMidLayComponent()
+        self.DrawBottomLayComponent()
+
     def DrawSideLayerComponent(self):
+        canvas = QPixmap(SIDE_WINDOW_WIDTH, SIDE_WINDOW_HEIGHT)
+        self.SideLayerDisplay.setPixmap(canvas)
         self.SideLayerDisplay.pixmap().fill(Qt.black)
         painter = QPainter(self.SideLayerDisplay.pixmap())
-        
+
         for Component in VIEW_SETTING["Side"]:
             if (Component in self.ComponentList):
                 Curr = self.ComponentList[Component]
@@ -103,6 +125,8 @@ class CenterWidget(QWidget):
                 painter.drawText(Rect, Qt.AlignCenter, Curr.Name)
 
     def DrawMidLayComponent(self):
+        canvas = QPixmap(MID_WINDOW_WIDTH, MID_WINDOW_HEIGHT)
+        self.MidLayerDisplay.setPixmap(canvas)
         self.MidLayerDisplay.pixmap().fill(Qt.black)
         painter = QPainter(self.MidLayerDisplay.pixmap())      
         
@@ -110,7 +134,7 @@ class CenterWidget(QWidget):
         for Component in VIEW_SETTING["Mid"]:
             if (Component in self.ComponentList):
                 Curr = self.ComponentList[Component]
-                Rect = QRect(Curr.CurrPos.x, Curr.CurrPos.y, Curr.Dimension.x, Curr.Dimension.y)
+                Rect = QRect(int(Curr.CurrPos.x), int(Curr.CurrPos.y), int(Curr.Dimension.x), int(Curr.Dimension.y))
                 painter.setPen(self.ComponentDrawer['Pen'])
                 painter.setBrush(self.ComponentDrawer['Brush'])
                 painter.drawRect(Rect)
@@ -120,6 +144,8 @@ class CenterWidget(QWidget):
                 painter.drawText(Rect, Qt.AlignCenter, Curr.Name)
     
     def DrawBottomLayComponent(self):
+        canvas = QPixmap(LOW_WINDOW_WIDTH, LOW_WINDOW_HEIGHT)
+        self.BottomLayerDisplay.setPixmap(canvas)
         self.BottomLayerDisplay.pixmap().fill(Qt.black)
         painter = QPainter(self.BottomLayerDisplay.pixmap())      
         
