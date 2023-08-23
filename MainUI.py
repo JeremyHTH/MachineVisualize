@@ -4,9 +4,14 @@ from PyQt5.QtGui import QPixmap, QImage, QPainter, QPen, QBrush, QColor
 from PyQt5 import QtGui
 from PyQt5.QtCore import Qt, QRect
 from Componment import MovingComponent, Coordinate
+import socket
 import subprocess
 import platform
 import csv, yaml
+
+import threading
+HOST = socket.gethostname()
+PORT = 9086
 
 SIDE_WINDOW_WIDTH = 600
 SIDE_WINDOW_HEIGHT = 800
@@ -34,6 +39,12 @@ class CenterWidget(QWidget):
         self.TextDrawer['Pen'].setColor(QColor("#FFFFFF"))
         self.TextDrawer['Brush'].setColor(QColor("#FFFFFF"))
         self.TextDrawer['Brush'].setStyle(Qt.Dense1Pattern)
+
+        self.Socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+        self.Socket.bind((HOST, PORT))
+        self.Socket.settimeout(1)
+        self.ConnectionContinue = False
+        
         self.init_UI()
         
         
@@ -73,28 +84,72 @@ class CenterWidget(QWidget):
         self.SideLayerDisplay = QLabel(self)
         self.SideCanvas = QPixmap(SIDE_WINDOW_WIDTH, SIDE_WINDOW_HEIGHT)
         self.SideLayerDisplay.setPixmap(self.SideCanvas)
-        self.layout.addWidget(self.SideLayerDisplay, 0, 0, 2, 1)
+        self.layout.addWidget(self.SideLayerDisplay, 0, 0, 2, 3)
 
         self.MidLayerDisplay = QLabel(self)
         self.MidCanvas = QPixmap(MID_WINDOW_WIDTH, MID_WINDOW_HEIGHT)
         self.MidLayerDisplay.setPixmap(self.MidCanvas)
-        self.layout.addWidget(self.MidLayerDisplay, 0, 1, 1, 1)
+        self.layout.addWidget(self.MidLayerDisplay, 0, 3, 1, 3)
 
         self.BottomLayerDisplay = QLabel(self)
         self.BottomCanvas = QPixmap(LOW_WINDOW_WIDTH, LOW_WINDOW_HEIGHT)
         self.BottomLayerDisplay.setPixmap(self.BottomCanvas)
-        self.layout.addWidget(self.BottomLayerDisplay, 1, 1, 1, 1)
+        self.layout.addWidget(self.BottomLayerDisplay, 1, 3, 1, 3)
 
         self.TestMoveButton = QPushButton("Left", self)
         self.TestMoveButton.clicked.connect(self.TestMove)
-        self.layout.addWidget(self.TestMoveButton)
+        self.layout.addWidget(self.TestMoveButton, 2, 0, 1, 1)
         
+        self.StartListeningButton = QPushButton("Start Listening",self)
+        self.StartListeningButton.clicked.connect(self._StartServerListening)
+        self.layout.addWidget(self.StartListeningButton, 2, 1, 1, 1)
+
+        self.StopListeningButton = QPushButton("Stop Listening",self)
+        self.StopListeningButton.clicked.connect(self._StopServerListening)
+        self.layout.addWidget(self.StopListeningButton, 2, 2, 1, 1)
+
         self.DrawSideLayerComponent()
         self.DrawMidLayComponent()
         self.DrawBottomLayComponent()
 
         
         # self.setLayout(self.layout)
+
+    def ConnectionHandler(conn, addr):
+        print(f"Connected by {addr}")
+        with conn:
+            while(data := conn.recv(1024).decode()):
+                # print("Entered")
+                Pos = yaml.safe_load(data)
+                print(Pos)
+                conn.send(b"Received")
+            print("Disconnect")
+
+    def _StartServerListening(self):
+        self.Socket.listen()
+
+        self.ThreadList = []
+        
+        while self.ConnectionContinue:
+            conn, addr = self.Socket.accept()
+            NewThread = threading.Thread(target=self.ConnectionHandler, args=(conn, addr))
+            # print(f"Connected by {addr}")
+            # with conn:
+            #     while(data := conn.recv(1024).decode()):
+            #         # print("Entered")
+            #         Pos = yaml.safe_load(data)
+            #         print(Pos)
+            #         conn.send(b"Received")
+
+            #     print("Disconnect")
+            NewThread.start()
+
+    def _StopServerListening(self):
+        self.ConnectionContinue = False
+
+
+
+
     def TestMove(self):
 
         for key in self.ComponentList.keys():
@@ -164,7 +219,14 @@ class CenterWidget(QWidget):
 
     def close(self) -> bool:
         self.FirstRow.close()
+        self.Socket.close()
         return super().close()
+    
+    def __del__(self):
+        print("delete")
+        # self.FirstRow.close()
+        self.Socket.close()
+        # return super().close()
 
 class MainWindow(QMainWindow):
     def __init__(self):
