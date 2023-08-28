@@ -4,7 +4,7 @@ import threading
 HOST = socket.gethostname()#"127.0.0.1"  # Standard loopback interface address (localhost)
 PORT = 9086  # Port to listen on (non-privileged ports are > 1023)
 
-def ConnectionHandler(conn, addr):
+def ConnectionHandler_YAML(conn, addr):
     print(f"Connected by {addr}")
     with conn:
         while(data := conn.recv(1024).decode()):
@@ -12,6 +12,13 @@ def ConnectionHandler(conn, addr):
             Pos = yaml.safe_load(data)
             print(Pos)
             conn.send(b"Received")
+        print("Disconnect")
+
+def ConnectionHandler_JSON(conn, addr):
+    print(f'Connected {addr}')
+    with conn:
+        while(data := conn.recv(1024).decode()):
+            conn.send(b'Received')
         print("Disconnect")
 
 def StartServer():
@@ -22,7 +29,7 @@ def StartServer():
         s.listen()
         while Continue:
             conn, addr = s.accept()
-            NewThread = threading.Thread(target=ConnectionHandler, args=(conn, addr))
+            NewThread = threading.Thread(target=ConnectionHandler_YAML, args=(conn, addr))
             # print(f"Connected by {addr}")
             # with conn:
             #     while(data := conn.recv(1024).decode()):

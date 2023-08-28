@@ -3,22 +3,20 @@ from PyQt5.QtWidgets import *
 from PyQt5.QtGui import QPixmap, QImage, QPainter, QPen, QBrush, QColor
 from PyQt5 import QtGui
 from PyQt5.QtCore import Qt, QRect
-from Componment import MovingComponent, Coordinate
+from Componment import MovingComponent, CartesianComponent, Coordinate
 import socket
 import subprocess
 import platform
-import csv, yaml
+import csv, yaml, json
+import select
 
 import threading
 HOST = socket.gethostname()
 PORT = 9086
 
-SIDE_WINDOW_WIDTH = 600
-SIDE_WINDOW_HEIGHT = 800
-MID_WINDOW_WIDTH = 600
-MID_WINDOW_HEIGHT = 400
-LOW_WINDOW_WIDTH = 600
-LOW_WINDOW_HEIGHT = 400
+XAxisSize = 600
+YAxisSize = 420
+ZAxisSize = YAxisSize * 2
 VIEW_SETTING = {'Side': ("Head", "Eye", "MegaEye", "LeftLeg", "RightLeg"), 'Mid': ("Eye", "MegaEye", "Arm"), 'Bottom': ("LeftLeg", "RightLeg")}
 
 
@@ -42,14 +40,14 @@ class CenterWidget(QWidget):
 
         self.Socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
         self.Socket.bind((HOST, PORT))
-        self.Socket.settimeout(1)
+        self.Socket.listen()
+        # self.Socket.settimeout(1)
         self.ConnectionContinue = False
         
         self.init_UI()
         
-        
     def CreateComponent(self):
-        self.ComponentList : dict[str, MovingComponent] = {}
+        # self.ComponentList : dict[shtr, MovingComponent] = {}
         # with open("Configure/ComponentConfig.csv", 'r') as CSVFile:
         #     CSVRows = csv.reader(CSVFile)
         #     for Line in CSVRows:
@@ -70,29 +68,30 @@ class CenterWidget(QWidget):
         #     self.ComponentList['LeftLeg'].CurrPos = Coordinate(100, 100, 700)
         # if ('RightLeg' in self.ComponentList):    
         #     self.ComponentList['RightLeg'].CurrPos = Coordinate(500, 100, 700)
-
+        MaxPixPos = Coordinate(XAxisSize, YAxisSize, ZAxisSize)
         with open("Configure/ComponentConfig.yml",'r') as f:
             Data = yaml.safe_load(f)
 
             for key, Detail in Data.items():
                 print(key, Detail)
-                self.ComponentList[key] = MovingComponent(Name = key, **Detail)
-        print(self.ComponentList)
+                self.ComponentList[key] = CartesianComponent(Name = key, **Detail)
+                self.ComponentList[key].MaxPixPos = MaxPixPos
+        # print(self.ComponentList)
     def init_UI(self):
         self.layout = QGridLayout(self)
 
         self.SideLayerDisplay = QLabel(self)
-        self.SideCanvas = QPixmap(SIDE_WINDOW_WIDTH, SIDE_WINDOW_HEIGHT)
+        self.SideCanvas = QPixmap(XAxisSize, ZAxisSize)
         self.SideLayerDisplay.setPixmap(self.SideCanvas)
         self.layout.addWidget(self.SideLayerDisplay, 0, 0, 2, 3)
 
         self.MidLayerDisplay = QLabel(self)
-        self.MidCanvas = QPixmap(MID_WINDOW_WIDTH, MID_WINDOW_HEIGHT)
+        self.MidCanvas = QPixmap(XAxisSize, YAxisSize)
         self.MidLayerDisplay.setPixmap(self.MidCanvas)
         self.layout.addWidget(self.MidLayerDisplay, 0, 3, 1, 3)
 
         self.BottomLayerDisplay = QLabel(self)
-        self.BottomCanvas = QPixmap(LOW_WINDOW_WIDTH, LOW_WINDOW_HEIGHT)
+        self.BottomCanvas = QPixmap(XAxisSize, YAxisSize)
         self.BottomLayerDisplay.setPixmap(self.BottomCanvas)
         self.layout.addWidget(self.BottomLayerDisplay, 1, 3, 1, 3)
 
@@ -115,43 +114,41 @@ class CenterWidget(QWidget):
         
         # self.setLayout(self.layout)
 
-    def ConnectionHandler(conn, addr):
-        print(f"Connected by {addr}")
-        with conn:
-            while(data := conn.recv(1024).decode()):
-                # print("Entered")
-                Pos = yaml.safe_load(data)
-                print(Pos)
-                conn.send(b"Received")
-            print("Disconnect")
-
-    def _StartServerListening(self):
-        self.Socket.listen()
-
+    def ConnectionHandler(self):
+        self.ConnectionContinue = True
         self.ThreadList = []
         
         while self.ConnectionContinue:
-            conn, addr = self.Socket.accept()
-            NewThread = threading.Thread(target=self.ConnectionHandler, args=(conn, addr))
-            # print(f"Connected by {addr}")
-            # with conn:
-            #     while(data := conn.recv(1024).decode()):
-            #         # print("Entered")
-            #         Pos = yaml.safe_load(data)
-            #         print(Pos)
-            #         conn.send(b"Received")
+            Readable, *_ = select.select([self.Socket], [], [], 1.0)
+            if (self.Socket in Readable):
+                conn, addr = self.Socket.accept()
+                conn.settimeout(1)
+                print(f"Connected by {addr if conn else 0}")
+                with conn:
+                    while(data := conn.recv(1024).decode()):
+                        # print("Entered")
+                        # Pos = yaml.safe_load(data)
+                        Pos = json.loads(data)
+                        print(Pos)
+                        for key, item in Pos.items():
+                            if (key in self.ComponentList and "CurrPos" in item):
+                                self.ComponentList[key].CurrPos = Coordinate(**item['CurrPos'])
+                        conn.send(b"Received")
+                        self.DrawSideLayerComponent()
+                        self.DrawMidLayComponent()
+                        self.DrawBottomLayComponent()
+                    print("Disconnect")
 
-            #     print("Disconnect")
-            NewThread.start()
+    def _StartServerListening(self):
+        self.NewThread = threading.Thread(target=self.ConnectionHandler, daemon= True)
+        self.NewThread.start()
 
     def _StopServerListening(self):
         self.ConnectionContinue = False
-
-
-
+        if (self.NewThread):
+            self.NewThread.join()
 
     def TestMove(self):
-
         for key in self.ComponentList.keys():
             self.ComponentList[key].CurrPos.x += 100
             self.ComponentList[key].CurrPos.y += 100
@@ -162,7 +159,7 @@ class CenterWidget(QWidget):
         self.DrawBottomLayComponent()
 
     def DrawSideLayerComponent(self):
-        canvas = QPixmap(SIDE_WINDOW_WIDTH, SIDE_WINDOW_HEIGHT)
+        canvas = QPixmap(XAxisSize, ZAxisSize)
         self.SideLayerDisplay.setPixmap(canvas)
         self.SideLayerDisplay.pixmap().fill(Qt.black)
         painter = QPainter(self.SideLayerDisplay.pixmap())
@@ -170,63 +167,60 @@ class CenterWidget(QWidget):
         for Component in VIEW_SETTING["Side"]:
             if (Component in self.ComponentList):
                 Curr = self.ComponentList[Component]
-                Rect = QRect(Curr.CurrPos.x, Curr.CurrPos.z, Curr.Dimension.x, Curr.Dimension.z)
+                CurrPixPos : Coordinate = Curr.GetPixelPos()
+                Rect = QRect(CurrPixPos.x, CurrPixPos.z, Curr.Dimension.x, Curr.Dimension.z)
                 painter.setPen(self.ComponentDrawer['Pen'])
                 painter.setBrush(self.ComponentDrawer['Brush'])
                 painter.drawRect(Rect)
                 painter.setPen(self.TextDrawer['Pen'])
                 painter.setBrush(self.TextDrawer['Brush'])
-                print(Curr.Name)
+                # print(Curr.CurrPos)
                 painter.drawText(Rect, Qt.AlignCenter, Curr.Name)
 
     def DrawMidLayComponent(self):
-        canvas = QPixmap(MID_WINDOW_WIDTH, MID_WINDOW_HEIGHT)
+        canvas = QPixmap(XAxisSize, YAxisSize)
         self.MidLayerDisplay.setPixmap(canvas)
         self.MidLayerDisplay.pixmap().fill(Qt.black)
         painter = QPainter(self.MidLayerDisplay.pixmap())      
-        
 
         for Component in VIEW_SETTING["Mid"]:
             if (Component in self.ComponentList):
                 Curr = self.ComponentList[Component]
-                Rect = QRect(int(Curr.CurrPos.x), int(Curr.CurrPos.y), int(Curr.Dimension.x), int(Curr.Dimension.y))
+                CurrPixPos : Coordinate = Curr.GetPixelPos()
+                Rect = QRect(CurrPixPos.x, CurrPixPos.y, int(Curr.Dimension.x), int(Curr.Dimension.y))
                 painter.setPen(self.ComponentDrawer['Pen'])
                 painter.setBrush(self.ComponentDrawer['Brush'])
                 painter.drawRect(Rect)
                 painter.setPen(self.TextDrawer['Pen'])
                 painter.setBrush(self.TextDrawer['Brush'])
-                print(Curr.Name)
+                # print(Curr.Name)
                 painter.drawText(Rect, Qt.AlignCenter, Curr.Name)
     
     def DrawBottomLayComponent(self):
-        canvas = QPixmap(LOW_WINDOW_WIDTH, LOW_WINDOW_HEIGHT)
+        canvas = QPixmap(XAxisSize, YAxisSize)
         self.BottomLayerDisplay.setPixmap(canvas)
         self.BottomLayerDisplay.pixmap().fill(Qt.black)
         painter = QPainter(self.BottomLayerDisplay.pixmap())      
-        
 
         for Component in VIEW_SETTING["Bottom"]:
             if (Component in self.ComponentList):
                 Curr = self.ComponentList[Component]
-                Rect = QRect(Curr.CurrPos.x, Curr.CurrPos.y, Curr.Dimension.x, Curr.Dimension.y)
+                CurrPixPos : Coordinate = Curr.GetPixelPos()
+                Rect = QRect(CurrPixPos.x, CurrPixPos.y, Curr.Dimension.x, Curr.Dimension.y)
                 painter.setPen(self.ComponentDrawer['Pen'])
                 painter.setBrush(self.ComponentDrawer['Brush'])
                 painter.drawRect(Rect)
                 painter.setPen(self.TextDrawer['Pen'])
                 painter.setBrush(self.TextDrawer['Brush'])
-                print(Curr.Name)
+                # print(Curr.Name)
                 painter.drawText(Rect, Qt.AlignCenter, Curr.Name)
 
     def close(self) -> bool:
-        self.FirstRow.close()
+        print("close")
+        self._StopServerListening()
         self.Socket.close()
         return super().close()
     
-    def __del__(self):
-        print("delete")
-        # self.FirstRow.close()
-        self.Socket.close()
-        # return super().close()
 
 class MainWindow(QMainWindow):
     def __init__(self):
@@ -256,7 +250,7 @@ class MainWindow(QMainWindow):
     def close(self) -> bool:
         self.CenterWid.close()
         return super().close()
-    
+
 if __name__ == '__main__':
     app = QApplication(sys.argv)
     container = MainWindow()
