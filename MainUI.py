@@ -11,12 +11,13 @@ import csv, yaml, json
 import select
 
 import threading
-HOST = socket.gethostname()
+HOST = "127.0.0.1" #socket.gethostname()
 PORT = 9086
+PROTOCOL = socket.SOCK_DGRAM
 
-XAxisSize = 600
-YAxisSize = 420
-ZAxisSize = YAxisSize * 2
+X_AXIS_SIZE = 600
+Y_AXIS_SIZE = 420
+Z_AXIS_SIZE = Y_AXIS_SIZE * 2
 VIEW_SETTING = {'Side': ("Head", "Eye", "MegaEye", "LeftLeg", "RightLeg"), 'Mid': ("Eye", "MegaEye", "Arm"), 'Bottom': ("LeftLeg", "RightLeg")}
 
 
@@ -38,9 +39,10 @@ class CenterWidget(QWidget):
         self.TextDrawer['Brush'].setColor(QColor("#FFFFFF"))
         self.TextDrawer['Brush'].setStyle(Qt.Dense1Pattern)
 
-        self.Socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+        self.Socket = socket.socket(socket.AF_INET, PROTOCOL)
         self.Socket.bind((HOST, PORT))
-        self.Socket.listen()
+        if (PROTOCOL == socket.SOCK_STREAM):
+            self.Socket.listen()
         # self.Socket.settimeout(1)
         self.ConnectionContinue = False
         
@@ -68,7 +70,7 @@ class CenterWidget(QWidget):
         #     self.ComponentList['LeftLeg'].CurrPos = Coordinate(100, 100, 700)
         # if ('RightLeg' in self.ComponentList):    
         #     self.ComponentList['RightLeg'].CurrPos = Coordinate(500, 100, 700)
-        MaxPixPos = Coordinate(XAxisSize, YAxisSize, ZAxisSize)
+        MaxPixPos = Coordinate(X_AXIS_SIZE, Y_AXIS_SIZE, Z_AXIS_SIZE)
         with open("Configure/ComponentConfig.yml",'r') as f:
             Data = yaml.safe_load(f)
 
@@ -81,17 +83,17 @@ class CenterWidget(QWidget):
         self.layout = QGridLayout(self)
 
         self.SideLayerDisplay = QLabel(self)
-        self.SideCanvas = QPixmap(XAxisSize, ZAxisSize)
+        self.SideCanvas = QPixmap(X_AXIS_SIZE, Z_AXIS_SIZE)
         self.SideLayerDisplay.setPixmap(self.SideCanvas)
         self.layout.addWidget(self.SideLayerDisplay, 0, 0, 2, 3)
 
         self.MidLayerDisplay = QLabel(self)
-        self.MidCanvas = QPixmap(XAxisSize, YAxisSize)
+        self.MidCanvas = QPixmap(X_AXIS_SIZE, Y_AXIS_SIZE)
         self.MidLayerDisplay.setPixmap(self.MidCanvas)
         self.layout.addWidget(self.MidLayerDisplay, 0, 3, 1, 3)
 
         self.BottomLayerDisplay = QLabel(self)
-        self.BottomCanvas = QPixmap(XAxisSize, YAxisSize)
+        self.BottomCanvas = QPixmap(X_AXIS_SIZE, Y_AXIS_SIZE)
         self.BottomLayerDisplay.setPixmap(self.BottomCanvas)
         self.layout.addWidget(self.BottomLayerDisplay, 1, 3, 1, 3)
 
@@ -114,10 +116,17 @@ class CenterWidget(QWidget):
         
         # self.setLayout(self.layout)
 
-    def ConnectionHandler(self):
+    def UpdateUIComponentPos(self, Pos : dict):
+        for key, item in Pos.items():
+            if (key in self.ComponentList and "CurrPos" in item):
+                self.ComponentList[key].CurrPos = Coordinate(**item['CurrPos'])
+        self.DrawSideLayerComponent()
+        self.DrawMidLayComponent()
+        self.DrawBottomLayComponent()
+
+    def TCPConnectionHandler(self):
         self.ConnectionContinue = True
-        self.ThreadList = []
-        
+
         while self.ConnectionContinue:
             Readable, *_ = select.select([self.Socket], [], [], 1.0)
             if (self.Socket in Readable):
@@ -128,19 +137,37 @@ class CenterWidget(QWidget):
                     while(data := conn.recv(1024).decode()):
                         # print("Entered")
                         # Pos = yaml.safe_load(data)
-                        Pos = json.loads(data)
-                        print(Pos)
-                        for key, item in Pos.items():
-                            if (key in self.ComponentList and "CurrPos" in item):
-                                self.ComponentList[key].CurrPos = Coordinate(**item['CurrPos'])
-                        conn.send(b"Received")
-                        self.DrawSideLayerComponent()
-                        self.DrawMidLayComponent()
-                        self.DrawBottomLayComponent()
+                        try:
+                            Pos = json.loads(data)
+                            print(Pos)
+                            self.UpdateUIComponentPos(Pos)
+                            # conn.send(b"Received")
+                        except Exception as e:
+                            print(e)
+                            
                     print("Disconnect")
+    
+    def UDPConnectionHandler(self):
+        self.ConnectionContinue = True
+        
+        while (self.ConnectionContinue):
+            Message, Address = self.Socket.recvfrom(1024)
+            print("Received")
+            print(Message)
+            try:
+                Pos = json.loads(Message.decode())
+                self.UpdateUIComponentPos(Pos)
+                self.Socket.sendto(b'Received', Address)
+            except Exception as e:
+                print(e)
+
 
     def _StartServerListening(self):
-        self.NewThread = threading.Thread(target=self.ConnectionHandler, daemon= True)
+        if (PROTOCOL == socket.SOCK_STREAM):
+            self.NewThread = threading.Thread(target=self.TCPConnectionHandler, daemon= True)
+        else:
+            self.NewThread = threading.Thread(target=self.UDPConnectionHandler, daemon= True)
+        
         self.NewThread.start()
 
     def _StopServerListening(self):
@@ -159,7 +186,7 @@ class CenterWidget(QWidget):
         self.DrawBottomLayComponent()
 
     def DrawSideLayerComponent(self):
-        canvas = QPixmap(XAxisSize, ZAxisSize)
+        canvas = QPixmap(X_AXIS_SIZE, Z_AXIS_SIZE)
         self.SideLayerDisplay.setPixmap(canvas)
         self.SideLayerDisplay.pixmap().fill(Qt.black)
         painter = QPainter(self.SideLayerDisplay.pixmap())
@@ -168,7 +195,7 @@ class CenterWidget(QWidget):
             if (Component in self.ComponentList):
                 Curr = self.ComponentList[Component]
                 CurrPixPos : Coordinate = Curr.GetPixelPos()
-                Rect = QRect(CurrPixPos.x, CurrPixPos.z, Curr.Dimension.x, Curr.Dimension.z)
+                Rect = QRect(int(CurrPixPos.x), int(CurrPixPos.z), int(Curr.Dimension.x), int(Curr.Dimension.z))
                 painter.setPen(self.ComponentDrawer['Pen'])
                 painter.setBrush(self.ComponentDrawer['Brush'])
                 painter.drawRect(Rect)
@@ -178,7 +205,7 @@ class CenterWidget(QWidget):
                 painter.drawText(Rect, Qt.AlignCenter, Curr.Name)
 
     def DrawMidLayComponent(self):
-        canvas = QPixmap(XAxisSize, YAxisSize)
+        canvas = QPixmap(X_AXIS_SIZE, Y_AXIS_SIZE)
         self.MidLayerDisplay.setPixmap(canvas)
         self.MidLayerDisplay.pixmap().fill(Qt.black)
         painter = QPainter(self.MidLayerDisplay.pixmap())      
@@ -187,7 +214,7 @@ class CenterWidget(QWidget):
             if (Component in self.ComponentList):
                 Curr = self.ComponentList[Component]
                 CurrPixPos : Coordinate = Curr.GetPixelPos()
-                Rect = QRect(CurrPixPos.x, CurrPixPos.y, int(Curr.Dimension.x), int(Curr.Dimension.y))
+                Rect = QRect(int(CurrPixPos.x), int(CurrPixPos.y), int(Curr.Dimension.x), int(Curr.Dimension.y))
                 painter.setPen(self.ComponentDrawer['Pen'])
                 painter.setBrush(self.ComponentDrawer['Brush'])
                 painter.drawRect(Rect)
@@ -197,7 +224,7 @@ class CenterWidget(QWidget):
                 painter.drawText(Rect, Qt.AlignCenter, Curr.Name)
     
     def DrawBottomLayComponent(self):
-        canvas = QPixmap(XAxisSize, YAxisSize)
+        canvas = QPixmap(X_AXIS_SIZE, Y_AXIS_SIZE)
         self.BottomLayerDisplay.setPixmap(canvas)
         self.BottomLayerDisplay.pixmap().fill(Qt.black)
         painter = QPainter(self.BottomLayerDisplay.pixmap())      
@@ -206,7 +233,7 @@ class CenterWidget(QWidget):
             if (Component in self.ComponentList):
                 Curr = self.ComponentList[Component]
                 CurrPixPos : Coordinate = Curr.GetPixelPos()
-                Rect = QRect(CurrPixPos.x, CurrPixPos.y, Curr.Dimension.x, Curr.Dimension.y)
+                Rect = QRect(int(CurrPixPos.x), int(CurrPixPos.y), int(Curr.Dimension.x), int(Curr.Dimension.y))
                 painter.setPen(self.ComponentDrawer['Pen'])
                 painter.setBrush(self.ComponentDrawer['Brush'])
                 painter.drawRect(Rect)
