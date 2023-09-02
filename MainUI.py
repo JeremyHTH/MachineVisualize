@@ -39,11 +39,7 @@ class CenterWidget(QWidget):
         self.TextDrawer['Brush'].setColor(QColor("#FFFFFF"))
         self.TextDrawer['Brush'].setStyle(Qt.Dense1Pattern)
 
-        self.Socket = socket.socket(socket.AF_INET, PROTOCOL)
-        self.Socket.bind((HOST, PORT))
-        if (PROTOCOL == socket.SOCK_STREAM):
-            self.Socket.listen()
-        # self.Socket.settimeout(1)
+        
         self.ConnectionContinue = False
         
         self.init_UI()
@@ -151,18 +147,26 @@ class CenterWidget(QWidget):
         self.ConnectionContinue = True
         
         while (self.ConnectionContinue):
-            Message, Address = self.Socket.recvfrom(1024)
-            print("Received")
-            print(Message)
-            try:
-                Pos = json.loads(Message.decode())
-                self.UpdateUIComponentPos(Pos)
-                self.Socket.sendto(b'Received', Address)
-            except Exception as e:
-                print(e)
+            Readable, *_ = select.select([self.Socket], [], [], 1.0)
+            if (self.Socket in Readable):
+                Message, Address = self.Socket.recvfrom(1024)
+                print("Received")
+                print(Message)
+                try:
+                    Pos = json.loads(Message.decode())
+                    self.UpdateUIComponentPos(Pos)
+                    self.Socket.sendto(b'Received', Address)
+                except Exception as e:
+                    print(e)
 
 
     def _StartServerListening(self):
+        self.Socket = socket.socket(socket.AF_INET, PROTOCOL)
+        self.Socket.bind((HOST, PORT))
+        if (PROTOCOL == socket.SOCK_STREAM):
+            self.Socket.listen()
+        # self.Socket.settimeout(1)
+
         if (PROTOCOL == socket.SOCK_STREAM):
             self.NewThread = threading.Thread(target=self.TCPConnectionHandler, daemon= True)
         else:
@@ -171,6 +175,7 @@ class CenterWidget(QWidget):
         self.NewThread.start()
 
     def _StopServerListening(self):
+        self.Socket.close()
         self.ConnectionContinue = False
         if (self.NewThread):
             self.NewThread.join()
