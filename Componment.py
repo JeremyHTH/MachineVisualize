@@ -87,20 +87,9 @@ class CartesianComponent(MovingComponent):
         if ('SIToPix' in kwarg):
             self.SIToPix = kwarg['SIToPix']
         if (not self.SIToPix):
-            self.SIToPix = {'x':[1, 0], 'y':[1, 0], 'z': [1 , 0]}
+            self.SIToPix = {'x':[1, 0], 'y':[1, 0], 'z': [1, 0]}
 
 
-        # if ("CurrPos" in kwarg and isinstance(kwarg["CurrPos"], Coordinate)):
-        #     self.CurrPos = kwarg["CurrPos"]
-        
-        # if ("MaxPos" in kwarg and isinstance(kwarg["MaxPos"], Coordinate)):
-        #     self.MaxPos = kwarg["MaxPos"]
-
-        # if ("MinPos" in kwarg and isinstance(kwarg["MinPos"], Coordinate)):
-        #     self.MinPos = kwarg["MinPos"]
-
-        # if ("SIToPixRatio" in kwarg and isinstance(kwarg["SIToPixRatio"], Coordinate)):
-        #     self.SIToPixRatio = kwarg["SIToPixRatio"]
 
     def CalibrateSIToPix(self):
         X = [[self.MaxPos.x, self.MinPos.x],[self.MaxPos.y, self.MinPos.y],[self.MaxPos.z, self.MinPos.z]]
@@ -126,6 +115,9 @@ class CartesianComponent(MovingComponent):
 class ArmComponent(MovingComponent):
     def __init__(self, *arg, **kwarg) -> None:
         super().__init__(*arg, **kwarg)
+
+        
+
 
 if __name__ == '__main__':
     # Eye = MovingComponent(Name = "Hand", x = 10, y = 20, z = 30)
